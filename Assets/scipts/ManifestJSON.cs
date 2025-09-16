@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using TMPro; // Added for TextMeshPro
 
 #region Data Models
 [Serializable]
@@ -56,6 +57,8 @@ public class ManifestJSON : MonoBehaviour
     [SerializeField] private Slider progressSlider;
     [SerializeField] private Button playButton;
     [SerializeField] private Button updateButton;
+    [SerializeField] private TMP_Text fileNameText;      // Changed to TextMeshPro
+    [SerializeField] private TMP_Text downloadInfoText;  // Changed to TextMeshPro
     [Tooltip("Optional: scene to load when Play is clicked")]
     [SerializeField] private string playSceneName = "";
 
@@ -76,6 +79,12 @@ public class ManifestJSON : MonoBehaviour
     private int  _filesToDownloadCount = 0;
     private int  _filesCompletedCount  = 0;
     private bool _sizesKnownForAll     = false;
+    
+    // Download tracking for UI
+    private string _currentFileName = "";
+    private long _currentFileSize = 0;
+    private long _currentDownloadedBytes = 0;
+    private float _downloadStartTime = 0f;
     #endregion
 
     #region Lifecycle
@@ -105,6 +114,10 @@ public class ManifestJSON : MonoBehaviour
             updateButton.onClick.AddListener(() => StartCoroutine(InstallQueuedFiles()));
         }
 
+        // Initialize UI text
+        UpdateFileNameText("Ready");
+        UpdateDownloadInfoText("Waiting to start...");
+
         // Only fetch & plan on startup. Download/install happens when Update is clicked.
         StartCoroutine(FetchAndPlan());
     }
@@ -114,6 +127,18 @@ public class ManifestJSON : MonoBehaviour
         if (playButton)   playButton.interactable   = canPlay && !_isInstalling;
         if (updateButton) updateButton.interactable = canUpdate && !_isInstalling;
         if (progressSlider) progressSlider.value = Mathf.Clamp01(progress);
+    }
+
+    private void UpdateFileNameText(string text)
+    {
+        if (fileNameText != null)
+            fileNameText.text = text;
+    }
+
+    private void UpdateDownloadInfoText(string text)
+    {
+        if (downloadInfoText != null)
+            downloadInfoText.text = text;
     }
 
     private void OnPlayClicked()
@@ -138,14 +163,22 @@ public class ManifestJSON : MonoBehaviour
 
     private IEnumerator FetchAndPlan()
     {
+        UpdateFileNameText("Fetching manifest...");
+        UpdateDownloadInfoText("Connecting to server");
+        
         // 1) Manifest
         yield return FetchManifest();
         if (_manifest == null || _manifest.files == null || _manifest.files.Length == 0)
         {
             Debug.LogError("[UPDATER] No manifest/files. Enabling Play as fallback.");
+            UpdateFileNameText("No updates available");
+            UpdateDownloadInfoText("Ready to play");
             SetUIState(canPlay: true, canUpdate: false, progress: 0f);
             yield break;
         }
+
+        UpdateFileNameText("Checking files...");
+        UpdateDownloadInfoText("Verifying local files");
 
         // 2) Plan which files need download (no download yet)
         yield return PlanDownloads();
@@ -156,10 +189,14 @@ public class ManifestJSON : MonoBehaviour
         if (_downloadQueue.Count == 0)
         {
             Debug.Log("[UPDATER] Everything up to date.");
+            UpdateFileNameText("All files up to date");
+            UpdateDownloadInfoText("Ready to play");
             SetUIState(canPlay: true, canUpdate: false, progress: 1f);
             yield break;
         }
         
+        UpdateFileNameText("Updates available");
+        UpdateDownloadInfoText($"{_downloadQueue.Count} files to download ({FormatBytes(_totalBytesPlanned)})");
         SetUIState(canPlay: false, canUpdate: true, progress: 0f);
     }
 
@@ -169,6 +206,8 @@ public class ManifestJSON : MonoBehaviour
         if (_downloadQueue.Count == 0)
         {
             // Nothing to do; enable play
+            UpdateFileNameText("All files up to date");
+            UpdateDownloadInfoText("Ready to play");
             SetUIState(canPlay: true, canUpdate: false, progress: 1f);
             yield break;
         }
@@ -189,13 +228,24 @@ public class ManifestJSON : MonoBehaviour
             var destFinal = ResolveUnderRoot(f.path);
             if (!_downloadQueue.Contains(destFinal)) continue;
 
+            // Setup current file tracking
+            _currentFileName = Path.GetFileName(f.path);
+            _currentFileSize = f.size;
+            _currentDownloadedBytes = 0;
+            _downloadStartTime = Time.realtimeSinceStartup;
+
             bool ok = false;
 
             long baseOffset = _bytesDoneSoFar; // for overall progress when sizes are known
             yield return DownloadOne(
                 f, destFinal,
                 onDone: r => ok = r,
-                onProgressBytes: (nowBytes) => ReportOverallProgress(f, baseOffset, nowBytes)
+                onProgressBytes: (nowBytes) => 
+                {
+                    _currentDownloadedBytes = nowBytes;
+                    ReportOverallProgress(f, baseOffset, nowBytes);
+                    UpdateDownloadProgressUI();
+                }
             );
 
             if (!ok) { allOk = false; break; }
@@ -217,6 +267,8 @@ public class ManifestJSON : MonoBehaviour
         {
             // Clear queue and enable Play
             _downloadQueue.Clear();
+            UpdateFileNameText("Download complete");
+            UpdateDownloadInfoText("All files updated successfully");
             SetUIState(canPlay: true, canUpdate: false, progress: 1f);
         }
         else
@@ -224,7 +276,36 @@ public class ManifestJSON : MonoBehaviour
             // Allow retry
             RecomputePlannedTotals();
             bool hasQueue = _downloadQueue.Count > 0;
+            UpdateFileNameText("Download failed");
+            UpdateDownloadInfoText(hasQueue ? "Click Update to retry" : "Some files may be corrupted");
             SetUIState(canPlay: !hasQueue, canUpdate: hasQueue, progress: progressSlider ? progressSlider.value : 0f);
+        }
+    }
+
+    private void UpdateDownloadProgressUI()
+    {
+        if (_currentFileSize > 0)
+        {
+            // Calculate download speed
+            float elapsed = Time.realtimeSinceStartup - _downloadStartTime;
+            float speed = elapsed > 0.1f ? _currentDownloadedBytes / elapsed : 0;
+            
+            // Calculate progress percentage
+            float progressPercent = (_currentFileSize > 0) ? 
+                (float)_currentDownloadedBytes / _currentFileSize * 100f : 0f;
+            
+            string info = $"{FormatBytes(_currentDownloadedBytes)} / {FormatBytes(_currentFileSize)} " +
+                         $"({progressPercent:F1}%) - {FormatBytesPerSecond(speed)}";
+            
+            UpdateFileNameText($"Downloading: {_currentFileName}");
+            UpdateDownloadInfoText(info);
+        }
+        else
+        {
+            // Unknown file size
+            string info = $"{FormatBytes(_currentDownloadedBytes)} downloaded";
+            UpdateFileNameText($"Downloading: {_currentFileName}");
+            UpdateDownloadInfoText(info);
         }
     }
 
@@ -292,14 +373,32 @@ public class ManifestJSON : MonoBehaviour
 #else
         bool ok = !req.isNetworkError && !req.isHttpError;
 #endif
-        if (!ok) { Debug.LogError($"[Manifest] {req.error} (HTTP {req.responseCode})"); yield break; }
+        if (!ok) { 
+            Debug.LogError($"[Manifest] {req.error} (HTTP {req.responseCode})"); 
+            UpdateFileNameText("Network error");
+            UpdateDownloadInfoText("Failed to fetch update information");
+            yield break; 
+        }
 
         string body = StripBOM(req.downloadHandler.data) ?? "";
-        if (string.IsNullOrWhiteSpace(body)) { Debug.LogError("[Manifest] Empty response body."); yield break; }
+        if (string.IsNullOrWhiteSpace(body)) { 
+            Debug.LogError("[Manifest] Empty response body."); 
+            UpdateFileNameText("Server error");
+            UpdateDownloadInfoText("Empty response from server");
+            yield break; 
+        }
 
         try { _manifest = JsonUtility.FromJson<Manifest>(body); }
-        catch (Exception ex) { Debug.LogError("[Manifest] JSON parse exception: " + ex.Message); }
-        if (_manifest == null) Debug.LogError("[Manifest] Parse resulted in null.");
+        catch (Exception ex) { 
+            Debug.LogError("[Manifest] JSON parse exception: " + ex.Message); 
+            UpdateFileNameText("Data error");
+            UpdateDownloadInfoText("Invalid update information format");
+        }
+        if (_manifest == null) {
+            Debug.LogError("[Manifest] Parse resulted in null.");
+            UpdateFileNameText("Data error");
+            UpdateDownloadInfoText("Could not parse update information");
+        }
     }
     #endregion
 
@@ -473,48 +572,80 @@ public class ManifestJSON : MonoBehaviour
 #else
             bool ok = !req.isNetworkError && !req.isHttpError;
 #endif
-            if (!ok)
-            {
-                Debug.LogError($"[DL] {f.path} failed: {req.error} (HTTP {req.responseCode})");
-                TryDelete(temp);
-                onDone?.Invoke(false);
-                yield break;
-            }
-        }
-
-        // Verify downloaded size (if provided) — check the TEMP file
-        if (f.size > 0)
+        if (!ok)
         {
-            long got = new FileInfo(temp).Length;
-            if (got != f.size)
-            {
-                Debug.LogError($"[DL] Size mismatch {f.path}: expected {f.size}, got {got}");
-                TryDelete(temp);
-                onDone?.Invoke(false);
-                yield break;
-            }
+            Debug.LogError($"[DL] {f.path} failed: {req.error} (HTTP {req.responseCode})");
+            TryDelete(temp);
+            onDone?.Invoke(false);
+            yield break;
         }
-
-        // Final progress bump to “file complete”
-        onProgressBytes?.Invoke(f.size > 0 ? f.size : 0);
-        onDone?.Invoke(true);
     }
 
-    private void CommitOrAbort(bool allOk)
+    // Verify downloaded size (if provided) — check the TEMP file
+    if (f.size > 0)
     {
-        if (allOk && _finalizeQueue.Count > 0)
+        long got = new FileInfo(temp).Length;
+        if (got != f.size)
         {
-            foreach (var dest in _finalizeQueue) PromotePart(dest);
-            _finalizeQueue.Clear();
-            _downloadQueue.Clear();
-            Debug.Log("[FINALIZE] Installed all queued files.");
+            Debug.LogError($"[DL] Size mismatch {f.path}: expected {f.size}, got {got}");
+            TryDelete(temp);
+            onDone?.Invoke(false);
+            yield break;
         }
-        else
+    }
+
+    // Final progress bump to "file complete"
+    onProgressBytes?.Invoke(f.size > 0 ? f.size : 0);
+    onDone?.Invoke(true);
+}
+
+private void CommitOrAbort(bool allOk)
+{
+    if (allOk && _finalizeQueue.Count > 0)
+    {
+        foreach (var dest in _finalizeQueue) PromotePart(dest);
+        _finalizeQueue.Clear();
+        _downloadQueue.Clear();
+        Debug.Log("[FINALIZE] Installed all queued files.");
+    }
+    else
+    {
+        foreach (var dest in _finalizeQueue) TryDelete(dest + ".part");
+        _finalizeQueue.Clear();
+        Debug.LogError("[FINALIZE] Aborted. Temp files removed; no changes applied.");
+    }
+}
+    #endregion
+
+    #region Utility Methods
+    private string FormatBytes(long bytes)
+    {
+        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+        int counter = 0;
+        decimal number = bytes;
+        
+        while (Math.Round(number / 1024) >= 1)
         {
-            foreach (var dest in _finalizeQueue) TryDelete(dest + ".part");
-            _finalizeQueue.Clear();
-            Debug.LogError("[FINALIZE] Aborted. Temp files removed; no changes applied.");
+            number /= 1024;
+            counter++;
         }
+        
+        return $"{number:n1} {suffixes[counter]}";
+    }
+
+    private string FormatBytesPerSecond(float bytesPerSecond)
+    {
+        string[] suffixes = { "B/s", "KB/s", "MB/s", "GB/s" };
+        int counter = 0;
+        float speed = bytesPerSecond;
+        
+        while (Math.Round(speed / 1024) >= 1 && counter < suffixes.Length - 1)
+        {
+            speed /= 1024;
+            counter++;
+        }
+        
+        return $"{speed:n1} {suffixes[counter]}";
     }
     #endregion
 
