@@ -50,6 +50,7 @@ public class CharacterCreationController : MonoBehaviour
 
     private void SelectMale()
     {
+
         selectedGender = "male";
 
         // Set male visuals
@@ -60,7 +61,7 @@ public class CharacterCreationController : MonoBehaviour
 
         // Reset female visuals
         femaleIcon.color = unselectedColor;
-        femaleChar.color = unselectedColor;
+        femaleChar.color = new Color(86f / 255f, 43f / 255f, 79f / 255f);
         femaleChar.transform.localScale = unselectedScale;
         femaleButton.image.color = femaleUnselectedColor;
 
@@ -71,7 +72,6 @@ public class CharacterCreationController : MonoBehaviour
     private void SelectFemale()
     {
         selectedGender = "female";
-
         // Set female visuals
         femaleIcon.color = selectedColor;
         femaleChar.color = selectedColor;
@@ -80,7 +80,7 @@ public class CharacterCreationController : MonoBehaviour
 
         // Reset male visuals
         maleIcon.color = unselectedColor;
-        maleChar.color = unselectedColor;
+        maleChar.color = new Color(25f / 255f, 91f / 255f, 109f / 255f);
         maleChar.transform.localScale = unselectedScale;
         maleButton.image.color = maleUnselectedColor;
 
@@ -91,9 +91,9 @@ public class CharacterCreationController : MonoBehaviour
     private void ResetGenderSelection()
     {
         maleIcon.color = unselectedColor;
-        maleChar.color = unselectedColor;
+        maleChar.color = new Color(25f / 255f, 91f / 255f, 109f / 255f);
         femaleIcon.color = unselectedColor;
-        femaleChar.color = unselectedColor;
+        femaleChar.color = new Color(86f / 255f, 43f / 255f, 79f / 255f);
         maleChar.transform.localScale = unselectedScale;
         femaleChar.transform.localScale = unselectedScale;
 

@@ -35,8 +35,21 @@ public class PlayFabAuth : MonoBehaviour
 
         errorText.text = "";
 
-        // Always show auth UI on start
-        ShowAuthUI();
+        // Check if already logged in (persistent login)
+        CheckExistingLogin();
+    }
+
+    private void CheckExistingLogin()
+    {
+        // If already logged in, show main UI directly
+        if (AccountManager.Instance != null && AccountManager.Instance.IsLoggedIn)
+        {
+            ShowMainUI();
+        }
+        else
+        {
+            ShowAuthUI();
+        }
     }
 
     private void OnLoginClicked()
@@ -78,6 +91,14 @@ public class PlayFabAuth : MonoBehaviour
     {
         ShowSuccessMessage("Login successful!");
         Debug.Log("Login successful");
+
+        // Set the logged in account in AccountManager
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.SetLoggedInAccount(loginEmail.text);
+        }
+
+
 
         ShowMainUI();
     }
@@ -130,6 +151,18 @@ public class PlayFabAuth : MonoBehaviour
     {
         // PlayFab logout
         PlayFabClientAPI.ForgetAllCredentials();
+
+        // Clear account from AccountManager
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.ClearAccount();
+        }
+
+        // Return to launcher scene through GameManager
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.ReturnToLauncher();
+        }
 
         // Show auth UI
         ShowAuthUI();
