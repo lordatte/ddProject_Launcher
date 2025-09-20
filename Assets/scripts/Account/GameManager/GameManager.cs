@@ -70,7 +70,7 @@ public class GameManager : MonoBehaviour
 
         if (hasCharacters)
         {
-            LoadScene2();
+            LoadScene3();
         }
         else
         {
@@ -83,9 +83,9 @@ public class GameManager : MonoBehaviour
         SceneManager.LoadScene(1); // Scene 1 - Character creation or selection
     }
 
-    public void LoadScene2()
+    public void LoadScene3()
     {
-        SceneManager.LoadScene(2); // Scene 2 - Main game scene
+        SceneManager.LoadScene(3); // Scene 2 - Main game scene
     }
 
     public void ReturnToLauncher()
