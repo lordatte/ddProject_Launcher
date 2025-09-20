@@ -35,8 +35,21 @@ public class PlayFabAuth : MonoBehaviour
 
         errorText.text = "";
 
-        // Always show auth UI on start
-        ShowAuthUI();
+        // Check if already logged in (persistent login)
+        CheckExistingLogin();
+    }
+
+    private void CheckExistingLogin()
+    {
+        // If already logged in, show main UI directly
+        if (AccountManager.Instance != null && AccountManager.Instance.IsLoggedIn)
+        {
+            ShowMainUI();
+        }
+        else
+        {
+            ShowAuthUI();
+        }
     }
 
     private void OnLoginClicked()
@@ -78,6 +91,12 @@ public class PlayFabAuth : MonoBehaviour
     {
         ShowSuccessMessage("Login successful!");
         Debug.Log("Login successful");
+
+        // Set the logged in account in AccountManager with PlayFabId
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.SetLoggedInAccount(loginEmail.text, result.PlayFabId);
+        }
 
         ShowMainUI();
     }
@@ -130,6 +149,18 @@ public class PlayFabAuth : MonoBehaviour
     {
         // PlayFab logout
         PlayFabClientAPI.ForgetAllCredentials();
+
+        // Clear account from AccountManager
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.ClearAccount();
+        }
+
+        // Return to launcher scene through GameManager
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.ReturnToLauncher();
+        }
 
         // Show auth UI
         ShowAuthUI();
@@ -189,6 +220,20 @@ public class PlayFabAuth : MonoBehaviour
     private void OnRegisterSuccess(RegisterPlayFabUserResult result)
     {
         ShowSuccessMessage("Registration successful!");
+        
+        // Grant starter items
+        PlayFabClientAPI.ExecuteCloudScript(new ExecuteCloudScriptRequest
+        {
+            FunctionName = "GrantStarterItems"
+        },
+        OnItemsGranted,
+        OnItemsGrantError);
+        
+        // Set the logged in account in AccountManager with PlayFabId
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.SetLoggedInAccount(registerEmail.text, result.PlayFabId);
+        }
 
         // Automatically log in after successful registration
         LoginWithEmail(registerEmail.text, registerPassword.text);
@@ -196,6 +241,17 @@ public class PlayFabAuth : MonoBehaviour
         registerEmail.text = "";
         registerPassword.text = "";
         registerConfirmPassword.text = "";
+    }
+
+    private void OnItemsGranted(ExecuteCloudScriptResult result)
+    {
+        Debug.Log("Starter items granted automatically");
+    }
+
+    private void OnItemsGrantError(PlayFabError error)
+    {
+        Debug.LogWarning("Failed to auto-grant items: " + error.ErrorMessage);
+        // You might want to retry or handle this gracefully
     }
 
     private void OnRegisterFailure(PlayFabError error)
