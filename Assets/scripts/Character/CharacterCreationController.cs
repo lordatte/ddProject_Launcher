@@ -28,6 +28,9 @@ public class CharacterCreationController : MonoBehaviour
     [SerializeField] private Color femaleSelectedColor = new Color(252f / 255f, 59f / 255f, 147f / 255f); // FC3B93
     [SerializeField] private Color femaleUnselectedColor = new Color(107f / 255f, 21f / 255f, 56f / 255f); // 6B1538
 
+    [Header("Character Creation")]
+    [SerializeField] private CreationCharacterConfirm characterCreationConfirm;
+
     private string selectedGender = "";
 
     private void Start()
@@ -50,7 +53,6 @@ public class CharacterCreationController : MonoBehaviour
 
     private void SelectMale()
     {
-
         selectedGender = "male";
 
         // Set male visuals
@@ -120,11 +122,25 @@ public class CharacterCreationController : MonoBehaviour
 
         if (IsValidName(name) && !string.IsNullOrEmpty(selectedGender))
         {
-            // Success! Do something with the selected gender and name
-            Debug.Log($"Character created: {name} ({selectedGender})");
-            errorText.text = "Character created successfully!";
+            // Success! Start the character creation process
+            errorText.text = "Creating character...";
+            errorText.color = Color.yellow;
 
-            // Here you would typically load the next scene or save the character data
+            // Disable confirm button during creation process
+            confirmBtn.interactable = false;
+
+            // Call the character creation confirmation system
+            if (characterCreationConfirm != null)
+            {
+                characterCreationConfirm.InitializeCharacterCreation(name, selectedGender);
+            }
+            else
+            {
+                errorText.text = "Character creation system not configured!";
+                errorText.color = Color.red;
+                confirmBtn.interactable = true;
+                Debug.LogError("CreationCharacterConfirm reference is missing!");
+            }
         }
         else
         {
@@ -140,10 +156,32 @@ public class CharacterCreationController : MonoBehaviour
             {
                 errorText.text = "Name must be at least 4 letters with no special characters";
             }
+            errorText.color = Color.red;
         }
     }
 
-    // Public method to get the selected data (optional)
+    // Public method to enable the confirm button (can be called from CreationCharacterConfirm if needed)
+    public void EnableConfirmButton()
+    {
+        confirmBtn.interactable = true;
+    }
+
+    // Public method to show error messages from character creation
+    public void ShowCreationError(string errorMessage)
+    {
+        errorText.text = errorMessage;
+        errorText.color = Color.red;
+        confirmBtn.interactable = true;
+    }
+
+    // Public method to show success messages from character creation
+    public void ShowCreationSuccess(string successMessage)
+    {
+        errorText.text = successMessage;
+        errorText.color = Color.green;
+    }
+
+    // Public method to get the selected data
     public (string gender, string name) GetCharacterData()
     {
         return (selectedGender, characterNameInput.text.Trim());

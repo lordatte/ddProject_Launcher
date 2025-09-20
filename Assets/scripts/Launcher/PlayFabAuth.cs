@@ -92,13 +92,11 @@ public class PlayFabAuth : MonoBehaviour
         ShowSuccessMessage("Login successful!");
         Debug.Log("Login successful");
 
-        // Set the logged in account in AccountManager
+        // Set the logged in account in AccountManager with PlayFabId
         if (AccountManager.Instance != null)
         {
-            AccountManager.Instance.SetLoggedInAccount(loginEmail.text);
+            AccountManager.Instance.SetLoggedInAccount(loginEmail.text, result.PlayFabId);
         }
-
-
 
         ShowMainUI();
     }
@@ -222,6 +220,20 @@ public class PlayFabAuth : MonoBehaviour
     private void OnRegisterSuccess(RegisterPlayFabUserResult result)
     {
         ShowSuccessMessage("Registration successful!");
+        
+        // Grant starter items
+        PlayFabClientAPI.ExecuteCloudScript(new ExecuteCloudScriptRequest
+        {
+            FunctionName = "GrantStarterItems"
+        },
+        OnItemsGranted,
+        OnItemsGrantError);
+        
+        // Set the logged in account in AccountManager with PlayFabId
+        if (AccountManager.Instance != null)
+        {
+            AccountManager.Instance.SetLoggedInAccount(registerEmail.text, result.PlayFabId);
+        }
 
         // Automatically log in after successful registration
         LoginWithEmail(registerEmail.text, registerPassword.text);
@@ -229,6 +241,17 @@ public class PlayFabAuth : MonoBehaviour
         registerEmail.text = "";
         registerPassword.text = "";
         registerConfirmPassword.text = "";
+    }
+
+    private void OnItemsGranted(ExecuteCloudScriptResult result)
+    {
+        Debug.Log("Starter items granted automatically");
+    }
+
+    private void OnItemsGrantError(PlayFabError error)
+    {
+        Debug.LogWarning("Failed to auto-grant items: " + error.ErrorMessage);
+        // You might want to retry or handle this gracefully
     }
 
     private void OnRegisterFailure(PlayFabError error)

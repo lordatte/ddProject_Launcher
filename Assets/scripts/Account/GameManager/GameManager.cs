@@ -5,6 +5,8 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
+    private bool waitingForCharacterCheck = false;
+
     private void Awake()
     {
         if (Instance == null)
@@ -18,6 +20,24 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void Start()
+    {
+        // Subscribe to character check events
+        if (CheckCharacters.Instance != null)
+        {
+            CheckCharacters.Instance.OnCharactersChecked += HandleCharactersChecked;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Unsubscribe from events
+        if (CheckCharacters.Instance != null)
+        {
+            CheckCharacters.Instance.OnCharactersChecked -= HandleCharactersChecked;
+        }
+    }
+
     public void Play()
     {
         string server = "server1";
@@ -26,19 +46,46 @@ public class GameManager : MonoBehaviour
         if (AccountManager.Instance != null && AccountManager.Instance.IsLoggedIn)
         {
             Debug.Log($"Playing on {server} with account: {AccountManager.Instance.CurrentEmail}");
-            LoadMainScene();
+
+            // Set flag that we're waiting for character check
+            waitingForCharacterCheck = true;
+
+            // Check for characters - the result will be handled by HandleCharactersChecked
+            CheckCharacters.Instance.CheckForCharacters();
         }
         else
         {
             Debug.LogWarning("Cannot play - no account is logged in!");
-            // You might want to show a UI message here or redirect to login
             ShowLoginRequiredMessage();
         }
     }
 
-    public void LoadMainScene()
+    private void HandleCharactersChecked(bool hasCharacters)
     {
-        SceneManager.LoadScene(1); // Assuming scene 1 is your main game scene
+        // Only proceed if we're waiting for a character check from the Play button
+        if (!waitingForCharacterCheck) return;
+
+        waitingForCharacterCheck = false;
+        Debug.Log($"Characters checked: {hasCharacters}");
+
+        if (hasCharacters)
+        {
+            LoadScene2();
+        }
+        else
+        {
+            LoadScene1();
+        }
+    }
+
+    public void LoadScene1()
+    {
+        SceneManager.LoadScene(1); // Scene 1 - Character creation or selection
+    }
+
+    public void LoadScene2()
+    {
+        SceneManager.LoadScene(2); // Scene 2 - Main game scene
     }
 
     public void ReturnToLauncher()
@@ -48,10 +95,7 @@ public class GameManager : MonoBehaviour
 
     private void ShowLoginRequiredMessage()
     {
-        // You can implement UI feedback here, like showing a popup or error message
         Debug.Log("Please log in first to play!");
-
-        // Optional: You could trigger an event or call a UI method here
-        // For example: UIManager.Instance.ShowLoginRequiredPopup();
+        // Implement UI feedback here
     }
 }
