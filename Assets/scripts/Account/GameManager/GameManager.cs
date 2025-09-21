@@ -83,11 +83,10 @@ public class GameManager : MonoBehaviour
         SceneManager.LoadScene(1); // Scene 1 - Character creation or selection
     }
 
-    public void LoadScene3()
+    public static void LoadScene3()
     {
         SceneManager.LoadScene(3); // Scene 2 - Main game scene
     }
-
     public void ReturnToLauncher()
     {
         SceneManager.LoadScene(0); // Scene 0 is your launcher/auth scene

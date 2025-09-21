@@ -117,14 +117,12 @@ public class CreationCharacterConfirm : MonoBehaviour
         ShowSuccess(successMessage);
         Debug.Log($"Character created: {result.CharacterId}");
 
-        // Notify the character creation controller
         if (characterCreationController != null)
         {
             characterCreationController.ShowCreationSuccess(successMessage);
         }
 
-        // You can add code here to load the next scene or update UI
-        // For example: SceneManager.LoadScene("GameScene");
+        GameManager.LoadScene3();
     }
 
     private void OnCreateCharacterFailure(PlayFabError error)
