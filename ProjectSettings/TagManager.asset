@@ -3,19 +3,23 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 2
-  tags: []
+  tags:
+  - walking surface
+  - buildings
+  - decoration1
+  - decoration2
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Player
   - Water
   - UI
   - confirm
-  - 
-  - 
-  - 
-  - 
+  - building
+  - surface
+  - decoration1
+  - decoration2
   - 
   - 
   - 
@@ -44,12 +48,33 @@ TagManager:
   - name: Back Ground
     uniqueID: 481877319
     locked: 0
+  - name: decoration_back
+    uniqueID: 2148698945
+    locked: 0
+  - name: back back
+    uniqueID: 1139423157
+    locked: 0
   - name: Ground
     uniqueID: 2329493905
     locked: 0
   - name: water
     uniqueID: 4052193319
     locked: 0
-  - name: decoration
+  - name: frontfront
+    uniqueID: 435539737
+    locked: 0
+  - name: back of buildings
+    uniqueID: 2767636985
+    locked: 0
+  - name: builing
+    uniqueID: 3528180725
+    locked: 0
+  - name: front of buildings
+    uniqueID: 3666423503
+    locked: 0
+  - name: decoration_front
     uniqueID: 1917379785
+    locked: 0
+  - name: player
+    uniqueID: 2981725661
     locked: 0
