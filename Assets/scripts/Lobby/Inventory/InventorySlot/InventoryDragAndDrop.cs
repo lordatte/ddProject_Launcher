@@ -2,17 +2,23 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class InventoryDragAndDrop : MonoBehaviour, IPointerClickHandler, IDropHandler, IBeginDragHandler
 {
     [Header("Drag Settings")]
     [SerializeField] private Canvas dragCanvas;
     [SerializeField] private float dragAlpha = 0.8f;
+    [SerializeField] private float dragThreshold = 10f; // Minimum distance to consider it a drag
 
     private InventorySlot originalSlot;
     private Image dragImage;
     private RectTransform dragTransform;
     private CanvasGroup canvasGroup;
     private bool isDragging = false;
+    private bool isSplitting = false;
+    private Vector2 dragStartPosition;
+
+    // Static reference to track the currently dragged item
+    private static InventoryDragAndDrop currentlyDraggedItem;
 
     private void Awake()
     {
@@ -22,7 +28,6 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
 
     private void InitializeDragComponents()
     {
-        // Get or add required components
         if (dragCanvas == null)
             dragCanvas = GetComponentInParent<Canvas>().rootCanvas;
 
@@ -31,52 +36,177 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
     }
 
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        // Only handle clicks if we're not dragging
+        if (isDragging) return;
+
+        if (eventData.button == PointerEventData.InputButton.Left)
+        {
+            // Handle shift+click for splitting stacks
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                HandleShiftClick();
+            }
+            else
+            {
+                // If we're already dragging something, drop it
+                if (currentlyDraggedItem != null && currentlyDraggedItem != this)
+                {
+                    currentlyDraggedItem.HandleDropOnSlot(originalSlot);
+                    return;
+                }
+
+                // If nothing is being dragged and this slot has an item, start dragging
+                if (currentlyDraggedItem == null && !originalSlot.IsEmpty)
+                {
+                    StartDrag();
+                }
+            }
+        }
+        else if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            // Right click to cancel drag
+            if (currentlyDraggedItem == this)
+            {
+                CancelDrag();
+            }
+        }
+    }
+
+    // Implement IBeginDragHandler to properly handle drag initiation
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // Only allow dragging if slot has an item
-        if (originalSlot.IsEmpty)
+        // This helps Unity's EventSystem recognize this as a drag operation
+        if (!originalSlot.IsEmpty && !isDragging)
         {
-            eventData.pointerDrag = null;
+            StartDrag();
+        }
+    }
+
+    // Implement IDropHandler to detect drops on this GameObject
+    public void OnDrop(PointerEventData eventData)
+    {
+        // If this is being dropped on a non-inventory slot area and we have a dragged item
+        if (currentlyDraggedItem != null && currentlyDraggedItem != this)
+        {
+            // Check if this GameObject has an InventorySlot component
+            InventorySlot slot = GetComponent<InventorySlot>();
+            if (slot == null)
+            {
+                Debug.Log("Not inventory slot - drop cancelled");
+                currentlyDraggedItem.CancelDrag();
+            }
+            else
+            {
+                // If it is an inventory slot, handle the drop normally
+                currentlyDraggedItem.HandleDropOnSlot(slot);
+            }
+        }
+    }
+
+    private void Update()
+    {
+        // Update drag position to follow mouse cursor
+        if (isDragging && dragTransform != null)
+        {
+            Vector2 mousePosition = Input.mousePosition;
+            RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                dragTransform, mousePosition, null, out Vector3 worldPoint);
+            dragTransform.position = worldPoint;
+
+            // Check if we've moved enough to be considered dragging (not just clicking)
+            if (Vector2.Distance(dragStartPosition, mousePosition) < dragThreshold)
+            {
+                return; // Don't process drops until we've actually dragged
+            }
+        }
+
+        // Cancel drag on Escape key
+        if (isDragging && Input.GetKeyDown(KeyCode.Escape))
+        {
+            CancelDrag();
+        }
+
+        // Handle drop when mouse button is released
+        if (isDragging && Input.GetMouseButtonUp(0))
+        {
+            // Only process as a drop if we've actually dragged the item
+            if (dragTransform != null && Vector2.Distance(dragStartPosition, Input.mousePosition) >= dragThreshold)
+            {
+                // Check if we're over a UI element
+                if (EventSystem.current.IsPointerOverGameObject())
+                {
+                    // If we're still dragging here and no OnDrop was called, it means we didn't drop on a valid IDropHandler
+                    if (isDragging)
+                    {
+                        Debug.Log("Dropped on UI element without IDropHandler - not an inventory slot");
+                        CancelDrag();
+                    }
+                }
+                else
+                {
+                    // Dropped outside of UI entirely
+                    Debug.Log("Dropped outside of UI - not an inventory slot");
+                    CancelDrag();
+                }
+            }
+            else
+            {
+                // If we didn't move enough, it was just a click - cancel the drag
+                CancelDrag();
+            }
+        }
+    }
+
+    private void HandleShiftClick()
+    {
+        // Only split if slot has a stackable item with more than 1 item
+        if (originalSlot.IsEmpty ||
+            !originalSlot.CurrentItem.IsStackable ||
+            originalSlot.StackCount <= 1)
+        {
             return;
         }
 
-        StartDrag();
-    }
-
-    public void OnDrag(PointerEventData eventData)
-    {
-        if (!isDragging) return;
-
-        // Update drag position
-        if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
-            dragTransform, eventData.position, eventData.pressEventCamera, out Vector3 worldPoint))
+        // Find an empty slot in the inventory
+        InventorySlot emptySlot = FindEmptySlotInInventory();
+        if (emptySlot != null)
         {
-            dragTransform.position = worldPoint;
+            SplitStack(emptySlot);
         }
     }
 
-    public void OnEndDrag(PointerEventData eventData)
+    private InventorySlot FindEmptySlotInInventory()
     {
-        if (!isDragging) return;
-
-        EndDrag();
-
-        // Find the slot we're dropping on
-        GameObject dropTarget = eventData.pointerCurrentRaycast.gameObject;
-        if (dropTarget != null)
+        InventorySlot[] allSlots = originalSlot.transform.parent.GetComponentsInChildren<InventorySlot>();
+        foreach (InventorySlot slot in allSlots)
         {
-            HandleDrop(dropTarget);
+            if (slot != originalSlot && slot.IsEmpty)
+            {
+                return slot;
+            }
         }
-        else
-        {
-            // Dropped outside any slot - return to original position
-            ResetDrag();
-        }
+        return null;
+    }
+
+    private void SplitStack(InventorySlot targetSlot)
+    {
+        int currentStackSize = originalSlot.StackCount;
+        int splitAmount = currentStackSize / 2;
+
+        if (splitAmount < 1) return;
+
+        Item itemToSplit = originalSlot.CurrentItem;
+        originalSlot.DecreaseStack(splitAmount);
+        targetSlot.TryAddItem(itemToSplit, splitAmount);
     }
 
     private void StartDrag()
     {
         isDragging = true;
+        currentlyDraggedItem = this;
+        dragStartPosition = Input.mousePosition;
 
         // Create drag visual
         CreateDragVisual();
@@ -88,60 +218,61 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
 
     private void CreateDragVisual()
     {
-        // Create new GameObject for drag visual
         GameObject dragObject = new GameObject("DragVisual");
         dragObject.transform.SetParent(dragCanvas.transform, false);
         dragObject.transform.SetAsLastSibling();
 
-        // Setup RectTransform
         dragTransform = dragObject.AddComponent<RectTransform>();
         dragTransform.sizeDelta = GetComponent<RectTransform>().sizeDelta;
 
-        // Setup Image
         dragImage = dragObject.AddComponent<Image>();
         dragImage.sprite = originalSlot.CurrentItem.Icon;
         dragImage.preserveAspect = true;
 
-        // Setup CanvasGroup for transparency
         CanvasGroup dragCanvasGroup = dragObject.AddComponent<CanvasGroup>();
         dragCanvasGroup.alpha = dragAlpha;
         dragCanvasGroup.blocksRaycasts = false;
 
-        // Set initial position
         dragTransform.position = transform.position;
     }
 
-    private void EndDrag()
+    public void HandleDropOnSlot(InventorySlot targetSlot)
     {
-        isDragging = false;
-
-        // Restore original slot appearance
-        canvasGroup.alpha = 1f;
-        canvasGroup.blocksRaycasts = true;
-    }
-
-    private void HandleDrop(GameObject dropTarget)
-    {
-        InventorySlot targetSlot = FindSlotFromGameObject(dropTarget);
-
-        if (targetSlot != null && targetSlot != originalSlot)
+        if (!isDragging || targetSlot == null)
         {
-            HandleSlotDrop(targetSlot);
+            CancelDrag();
+            return;
+        }
+
+        if (isSplitting)
+        {
+            HandleSplitDrop(targetSlot);
         }
         else
         {
-            ResetDrag();
+            HandleSlotDrop(targetSlot);
         }
     }
 
-    private InventorySlot FindSlotFromGameObject(GameObject target)
+    private void HandleSplitDrop(InventorySlot targetSlot)
     {
-        // Check if the target is a slot or a child of a slot
-        InventorySlot slot = target.GetComponent<InventorySlot>();
-        if (slot != null) return slot;
+        if (targetSlot.IsEmpty && originalSlot.CurrentItem.IsStackable && originalSlot.StackCount > 1)
+        {
+            int splitAmount = originalSlot.StackCount / 2;
 
-        // Check parent if target is a child of slot
-        return target.GetComponentInParent<InventorySlot>();
+            if (splitAmount < 1)
+            {
+                CancelDrag();
+                return;
+            }
+
+            Item itemToSplit = originalSlot.CurrentItem;
+            originalSlot.DecreaseStack(splitAmount);
+            targetSlot.TryAddItem(itemToSplit, splitAmount);
+        }
+
+        EndDrag();
+        isSplitting = false;
     }
 
     private void HandleSlotDrop(InventorySlot targetSlot)
@@ -149,37 +280,42 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
         Item draggedItem = originalSlot.CurrentItem;
         int draggedCount = originalSlot.StackCount;
 
-        // Case 1: Target slot is empty - move entire stack
         if (targetSlot.IsEmpty)
         {
             MoveItemToEmptySlot(targetSlot);
         }
-        // Case 2: Same stackable item - try to merge
         else if (CanMergeStacks(originalSlot, targetSlot))
         {
             MergeStacks(targetSlot);
         }
-        // Case 3: Different items or non-stackable - swap
         else if (CanSwapItems(originalSlot, targetSlot))
         {
             SwapItems(targetSlot);
         }
         else
         {
-            ResetDrag();
+            CancelDrag();
         }
     }
 
     private bool CanMergeStacks(InventorySlot fromSlot, InventorySlot toSlot)
     {
-        return fromSlot.CurrentItem == toSlot.CurrentItem &&
-               fromSlot.CurrentItem.IsStackable &&
-               !toSlot.IsFull;
+        Item fromItem = fromSlot.CurrentItem;
+        Item toItem = toSlot.CurrentItem;
+
+        if (fromItem == null || toItem == null ||
+            fromItem.PlayFabId != toItem.PlayFabId ||
+            !fromItem.IsStackable ||
+            fromSlot == toSlot)
+        {
+            return false;
+        }
+
+        return toSlot.StackCount < toItem.MaxStackSize;
     }
 
     private bool CanSwapItems(InventorySlot fromSlot, InventorySlot toSlot)
     {
-        // Allow swapping if both slots have items
         return !fromSlot.IsEmpty && !toSlot.IsEmpty;
     }
 
@@ -191,23 +327,26 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
         originalSlot.RemoveItem();
         targetSlot.TryAddItem(item, count);
 
-        CleanupDragVisual();
+        EndDrag();
     }
 
     private void MergeStacks(InventorySlot targetSlot)
     {
-        int amountToTransfer = Mathf.Min(
-            originalSlot.StackCount,
-            targetSlot.AvailableSpace
-        );
+        Item draggedItem = originalSlot.CurrentItem;
+        Item targetItem = targetSlot.CurrentItem;
+
+        int currentTargetStack = targetSlot.StackCount;
+        int currentDraggedStack = originalSlot.StackCount;
+        int maxStackSize = draggedItem.MaxStackSize;
+
+        int availableSpace = maxStackSize - currentTargetStack;
+        int amountToTransfer = Mathf.Min(currentDraggedStack, availableSpace);
 
         if (amountToTransfer > 0)
         {
-            // Add to target slot
             targetSlot.TryIncreaseStack(amountToTransfer);
 
-            // Remove from original slot
-            if (amountToTransfer == originalSlot.StackCount)
+            if (amountToTransfer == currentDraggedStack)
             {
                 originalSlot.RemoveItem();
             }
@@ -217,7 +356,7 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
             }
         }
 
-        CleanupDragVisual();
+        EndDrag();
     }
 
     private void SwapItems(InventorySlot targetSlot)
@@ -225,25 +364,43 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
         Item tempItem = targetSlot.CurrentItem;
         int tempCount = targetSlot.StackCount;
 
-        // Remove from both slots first
         targetSlot.RemoveItem();
         Item originalItem = originalSlot.CurrentItem;
         int originalCount = originalSlot.StackCount;
         originalSlot.RemoveItem();
 
-        // Add to new positions
         if (tempItem != null)
             originalSlot.TryAddItem(tempItem, tempCount);
 
         if (originalItem != null)
             targetSlot.TryAddItem(originalItem, originalCount);
 
-        CleanupDragVisual();
+        EndDrag();
     }
 
-    private void ResetDrag()
+    private void CancelDrag()
     {
         // Just cleanup the drag visual, item stays in original slot
+        CleanupDragVisual();
+
+        // Restore original slot appearance
+        canvasGroup.alpha = 1f;
+        canvasGroup.blocksRaycasts = true;
+
+        isDragging = false;
+        isSplitting = false;
+        currentlyDraggedItem = null;
+    }
+
+    private void EndDrag()
+    {
+        isDragging = false;
+        currentlyDraggedItem = null;
+
+        // Restore original slot appearance
+        canvasGroup.alpha = 1f;
+        canvasGroup.blocksRaycasts = true;
+
         CleanupDragVisual();
     }
 
@@ -257,9 +414,12 @@ public class InventoryDragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandl
         dragTransform = null;
     }
 
-    // Cleanup when destroyed
     private void OnDestroy()
     {
+        if (currentlyDraggedItem == this)
+        {
+            currentlyDraggedItem = null;
+        }
         CleanupDragVisual();
     }
 }
