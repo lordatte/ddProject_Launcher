@@ -9,16 +9,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cec0f19df239a414ea6583662b5086ff, type: 3}
-  m_Name: Sword
+  m_Script: {fileID: 11500000, guid: 2dc38f845083c954caec7bd16466a600, type: 3}
+  m_Name: Neat Apprentice Style
   m_EditorClassIdentifier: 
-  _itemName: Sword
-  _playFabId: Sword
-  _icon: {fileID: 1690161878, guid: fbddd5c9ee6bd4f4db188fae2c9066c4, type: 3}
+  _itemName: Neat Apprentice Style
+  _playFabId: Neat Apprentice Style
+  _icon: {fileID: 0}
+  _description: 
   _isConsumable: 0
-  _isStackable: 1
-  _isTradable: 1
-  displayName: Sword
+  _isStackable: 0
+  _isTradable: 0
+  _maxStackSize: 64
+  displayName: Neat Apprentice Style
   equippedImage: {fileID: 0}
   useImage: {fileID: 0}
   damage: 0

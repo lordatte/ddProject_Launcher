@@ -6,6 +6,7 @@ public abstract class Item : ScriptableObject
     [SerializeField] private string _itemName;
     [SerializeField] private string _playFabId;
     [SerializeField] private Sprite _icon;
+    [SerializeField] private string _description; // Added description field
 
     [Header("Item Properties")]
     [SerializeField] private bool _isConsumable;
@@ -17,6 +18,7 @@ public abstract class Item : ScriptableObject
     public string ItemName => _itemName;
     public string PlayFabId => _playFabId;
     public Sprite Icon => _icon;
+    public string Description => _description; // Added Description property
     public bool IsConsumable => _isConsumable;
     public bool IsStackable => _isStackable;
     public bool IsTradable => _isTradable;
@@ -31,6 +33,7 @@ public abstract class Item : ScriptableObject
 
     public virtual string GetDescription()
     {
-        return $"Item: {_itemName}";
+        // Return the custom description if provided, otherwise fall back to default
+        return string.IsNullOrEmpty(_description) ? $"Item: {_itemName}" : _description;
     }
 }

@@ -85,7 +85,7 @@ public class GameManager : MonoBehaviour
 
     public static void LoadScene3()
     {
-        SceneManager.LoadScene(3); // Scene 2 - Main game scene
+        SceneManager.LoadScene(2); // Scene 2 - Main game scene
     }
     public void ReturnToLauncher()
     {

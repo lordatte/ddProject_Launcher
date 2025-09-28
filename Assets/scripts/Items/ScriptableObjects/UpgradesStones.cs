@@ -1,6 +1,6 @@
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "New Upgrade Stone", menuName = "Inventory/Upgrade Stone")]
+[CreateAssetMenu(fileName = "New Upgrade Stone", menuName = "Items/Upgrade Stone")]
 public class UpgradesStones : Item
 {
     [Header("Upgrade Stone Properties")]
