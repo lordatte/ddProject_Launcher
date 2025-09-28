@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cec0f19df239a414ea6583662b5086ff, type: 3}
-  m_Name: Apla
+  m_Name: Sword
   m_EditorClassIdentifier: 
-  itemName: Apla
-  playFabId: Apla
-  isConsumable: 0
-  isStackable: 0
-  isTradable: 0
-  displayName: Apla
-  icon: {fileID: 0}
+  _itemName: Sword
+  _playFabId: Sword
+  _icon: {fileID: 1690161878, guid: fbddd5c9ee6bd4f4db188fae2c9066c4, type: 3}
+  _isConsumable: 0
+  _isStackable: 1
+  _isTradable: 1
+  displayName: Sword
   equippedImage: {fileID: 0}
   useImage: {fileID: 0}
   damage: 0

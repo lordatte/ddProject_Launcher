@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: afea39441f38fb84898e2e3b1658328b, type: 3}
+  m_Name: StoneDegre3
+  m_EditorClassIdentifier: 
+  _itemName: StoneDegre3
+  _playFabId: StoneDegre3
+  _icon: {fileID: 21300000, guid: baaf296dfa248154eb22ca95945b1dae, type: 3}
+  _isConsumable: 0
+  _isStackable: 1
+  _isTradable: 1
+  _maxStackSize: 64
+  _stoneDegree: 1

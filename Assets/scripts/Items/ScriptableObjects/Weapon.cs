@@ -5,7 +5,6 @@ public class Weapon : Item
 {
     [Header("Weapon Display")]
     [SerializeField] private string displayName;
-    [SerializeField] private Sprite icon;
     [SerializeField] private Sprite equippedImage;
     [SerializeField] private Sprite useImage;
 
@@ -19,7 +18,6 @@ public class Weapon : Item
 
     // Public methods for access
     public string GetDisplayName() => displayName;
-    public Sprite GetIcon() => icon;
     public Sprite GetEquippedImage() => equippedImage;
     public Sprite GetUseImage() => useImage;
     public int GetDamage() => damage;

@@ -3,26 +3,34 @@ using UnityEngine;
 public abstract class Item : ScriptableObject
 {
     [Header("Item Basic Information")]
-    [SerializeField] private string itemName;
-    [SerializeField] private string playFabId;
+    [SerializeField] private string _itemName;
+    [SerializeField] private string _playFabId;
+    [SerializeField] private Sprite _icon;
 
     [Header("Item Properties")]
-    [SerializeField] private bool isConsumable;
-    [SerializeField] private bool isStackable;
-    [SerializeField] private bool isTradable;
+    [SerializeField] private bool _isConsumable;
+    [SerializeField] private bool _isStackable;
+    [SerializeField] private bool _isTradable;
+    [SerializeField] private int _maxStackSize = 64; // Added MaxStackSize with default value
 
-    // Protected properties for derived class access
-    protected string ItemName => itemName;
-    protected string PlayFabId => playFabId;
-    protected bool IsConsumable => isConsumable;
-    protected bool IsStackable => isStackable;
-    protected bool IsTradable => isTradable;
+    // Public properties with proper naming convention
+    public string ItemName => _itemName;
+    public string PlayFabId => _playFabId;
+    public Sprite Icon => _icon;
+    public bool IsConsumable => _isConsumable;
+    public bool IsStackable => _isStackable;
+    public bool IsTradable => _isTradable;
+    public int MaxStackSize => _maxStackSize; // Added MaxStackSize property
 
-    public string GetItemName() => itemName;
-    public string GetPlayFabId() => playFabId;
-    public bool GetIsConsumable() => isConsumable;
-    public bool GetIsStackable() => isStackable;
-    public bool GetIsTradable() => isTradable;
+    // Optional: If you need methods for additional logic
+    public virtual void Use()
+    {
+        // Base use functionality to be overridden by derived classes
+        Debug.Log($"Using item: {_itemName}");
+    }
 
-
+    public virtual string GetDescription()
+    {
+        return $"Item: {_itemName}";
+    }
 }
