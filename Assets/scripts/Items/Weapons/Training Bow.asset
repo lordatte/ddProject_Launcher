@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Training Bow
   _playFabId: Training Bow
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: 8283195e72623c940b5e422bc132ef02, type: 3}
   _description: A simple bow with weak pull strength
   _isConsumable: 0
   _isStackable: 0

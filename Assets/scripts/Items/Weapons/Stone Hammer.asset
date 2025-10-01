@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Stone Hammer
   _playFabId: Stone Hammer
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: 4ac7c1c69aea78246aa99f350bd7ba24, type: 3}
   _description: A heavy weapon that deals good damage but swings slower.
   _isConsumable: 0
   _isStackable: 0

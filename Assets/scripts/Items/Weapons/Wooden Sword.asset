@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Wooden Sword
   _playFabId: Wooden Sword
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: b826a8b08edbdd248b8fa391618ed5d2, type: 3}
   _description: A basic wooden blade, perfect for training and early fights
   _isConsumable: 0
   _isStackable: 0

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Upgrade Stone D4
   _playFabId: UpgradeStone4
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: a0f2f69300222e24382639ed35e4aa53, type: 3}
   _description: The stone shines with brilliant light, brimming with heroic power.
     Only the worthy can harness its full potential.
   _isConsumable: 1

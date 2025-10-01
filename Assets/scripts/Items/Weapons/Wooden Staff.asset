@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Wooden Staff
   _playFabId: Wooden Staff
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: efaae9200a8f3bb4fb0107c49b8d521e, type: 3}
   _description: A simple staff for beginners to practice magic or use for light melee
     hits.
   _isConsumable: 0

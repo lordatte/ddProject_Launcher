@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Upgrade Stone D3
   _playFabId: UpgradeStone3
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: f1785727a1c0d9e4aba0968c3014d622, type: 3}
   _description: "Runes flicker across the stone\u2019s surface. Its energy pulses
     with intensity, empowering gear to reach new heights."
   _isConsumable: 1

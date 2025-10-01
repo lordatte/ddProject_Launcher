@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: 'Upgrade Stone D1 '
   _playFabId: UpgradeStone1
-  _icon: {fileID: -675383888, guid: bc1949b7b01a67744aa03cb51b7a9101, type: 3}
+  _icon: {fileID: 21300000, guid: 2c74090c5c862154da516e776f3df3d4, type: 3}
   _description: A faintly glowing stone, warm to the touch. It holds a tiny spark
     of power, just enough to strengthen basic equipment
   _isConsumable: 1

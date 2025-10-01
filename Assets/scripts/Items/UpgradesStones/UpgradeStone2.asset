@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Upgrade Stone D2
   _playFabId: UpgradeStone2
-  _icon: {fileID: -617971793, guid: bc1949b7b01a67744aa03cb51b7a9101, type: 3}
+  _icon: {fileID: 21300000, guid: ae3c395593c668e49a3f0e3d23d91c52, type: 3}
   _description: This stone radiates a soft, steady glow. Its magic is more stable,
     allowing stronger enhancements for adventurers ready for tougher battles.
   _isConsumable: 1

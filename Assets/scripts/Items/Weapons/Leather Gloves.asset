@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Leather Gloves
   _playFabId: Leather Gloves
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: ccecf3977c24f734ca4a73f91b578468, type: 3}
   _description: Basic combat gloves that slightly increase punch damage and protect
     hands.
   _isConsumable: 0

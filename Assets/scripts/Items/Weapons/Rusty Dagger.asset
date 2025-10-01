@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Rusty Dagger
   _playFabId: Rusty Dagger
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: eef985c9267a0334ebf9ae781e8249e9, type: 3}
   _description: A short, old dagger that allows quick attacks. Great for players
     who like speed.
   _isConsumable: 0

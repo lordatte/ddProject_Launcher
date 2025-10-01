@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Upgrade Stone D5
   _playFabId: UpgradeStone5
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: 4cb7d25343324f04988c27b1fe5fbfba, type: 3}
   _description: A legendary gem that glows like a star. It is said to contain the
     pure essence of ancient magic, granting unmatched strength to any weapon or armor
   _isConsumable: 1

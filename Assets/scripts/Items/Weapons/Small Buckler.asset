@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _itemName: Small Buckler
   _playFabId: Small Buckler
-  _icon: {fileID: 0}
+  _icon: {fileID: 21300000, guid: 2490d0f5e75986347a6e516228626ec2, type: 3}
   _description: A small round shield that can block light attacks and bash enemies
     for a tiny bit of damage
   _isConsumable: 0
