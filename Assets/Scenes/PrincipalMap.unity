@@ -2460,6 +2460,7 @@ GameObject:
   - component: {fileID: 294968802}
   - component: {fileID: 294968804}
   - component: {fileID: 294968803}
+  - component: {fileID: 294968805}
   m_Layer: 5
   m_Name: Backpack
   m_TagString: Untagged
@@ -2525,6 +2526,35 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 294968801}
   m_CullTransparentMesh: 1
+--- !u!114 &294968805
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 294968801}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49a06226b876c184d9201b590273f6c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  loadInventoryOnStart: 1
+  inventorySlotsParent: {fileID: 385611938}
+  inventorySlotPrefab: {fileID: 1306904251724182887, guid: da35fdf6f40080043b87dcb2dfd5c889, type: 3}
+  itemDatabase:
+  - {fileID: 11400000, guid: 7c0f2bef152fc4f41a5f2d244d21b44f, type: 2}
+  - {fileID: 11400000, guid: c1e28e90c0125404c8f5bb123f4a55d6, type: 2}
+  - {fileID: 11400000, guid: 55cfbca19d14d08489b4f56c348d78e7, type: 2}
+  - {fileID: 11400000, guid: dba81f1163347eb4682e9ead62a9a292, type: 2}
+  - {fileID: 11400000, guid: 94452ede26712424087982d238398382, type: 2}
+  - {fileID: 11400000, guid: bfa90dde2627a8247abb8b3065a968bc, type: 2}
+  - {fileID: 11400000, guid: f24077002ef59c34c91875cb3d93f011, type: 2}
+  - {fileID: 11400000, guid: 59f3c90672baaab46aca00f67a588960, type: 2}
+  - {fileID: 11400000, guid: 315156c4af9a4fe4bbd2fb8832a18b76, type: 2}
+  - {fileID: 11400000, guid: 9c6dd2fa9749b9545b5d379def72be53, type: 2}
+  - {fileID: 11400000, guid: 44fb34fdcdcf9ee478d9b15a6ea2ac21, type: 2}
+  - {fileID: 11400000, guid: e1f7290ca01c409419dd4181c6a2e2de, type: 2}
+  - {fileID: 11400000, guid: a63005232c2c09d4884eaf6cfa145caf, type: 2}
 --- !u!1 &311421981
 GameObject:
   m_ObjectHideFlags: 0

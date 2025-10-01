@@ -12,9 +12,17 @@ public class InventoryManager : MonoBehaviour
     public KeyCode toggleKey = KeyCode.I;
 
     private bool isInventoryOpen = false;
+    private PlayFabInventoryManager playFabInventory;
 
     void Start()
     {
+        // Get reference to PlayFabInventoryManager
+        playFabInventory = FindObjectOfType<PlayFabInventoryManager>();
+        if (playFabInventory == null)
+        {
+            Debug.LogError("PlayFabInventoryManager not found in scene!");
+        }
+
         // Ensure inventory is closed at start
         CloseInventory();
 
@@ -54,6 +62,18 @@ public class InventoryManager : MonoBehaviour
             inventoryPanel.SetActive(true);
             isInventoryOpen = true;
 
+            // Refresh inventory UI when opening
+            if (playFabInventory != null)
+            {
+                if (playFabInventory.IsInventoryLoaded())
+                {
+                    playFabInventory.RefreshInventoryUI();
+                }
+                else
+                {
+                    playFabInventory.LoadCharacterInventory();
+                }
+            }
         }
     }
 
@@ -63,6 +83,21 @@ public class InventoryManager : MonoBehaviour
         {
             inventoryPanel.SetActive(false);
             isInventoryOpen = false;
+
+            // Clear inventory UI when closing
+            if (playFabInventory != null)
+            {
+                playFabInventory.ClearInventoryUI();
+            }
+        }
+    }
+
+    // Public method to force refresh inventory (can be called from other scripts)
+    public void RefreshInventory()
+    {
+        if (playFabInventory != null && isInventoryOpen)
+        {
+            playFabInventory.RefreshInventoryUI();
         }
     }
 }

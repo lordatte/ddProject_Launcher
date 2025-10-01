@@ -117,14 +117,34 @@ public class CreationCharacterConfirm : MonoBehaviour
         ShowSuccess(successMessage);
         Debug.Log($"Character created: {result.CharacterId}");
 
+        // Refresh characters first, then fill data
+        if (CharacterManager.Instance != null)
+        {
+            CheckCharacters.Instance.RefreshCharacters();
+            // Wait a moment then fill data
+            StartCoroutine(WaitAndFillCharacterData());
+        }
+
         if (characterCreationController != null)
         {
             characterCreationController.ShowCreationSuccess(successMessage);
         }
 
-        GameManager.LoadScene3();
+        // Don't load scene immediately, wait for data to be filled
+        StartCoroutine(WaitAndLoadScene());
     }
 
+    private System.Collections.IEnumerator WaitAndFillCharacterData()
+    {
+        yield return new WaitForSeconds(1f); // Wait for refresh to complete
+        CharacterManager.Instance.FillCharacterData();
+    }
+
+    private System.Collections.IEnumerator WaitAndLoadScene()
+    {
+        yield return new WaitForSeconds(1.5f); // Wait for data to be filled
+        GameManager.LoadScene3();
+    }
     private void OnCreateCharacterFailure(PlayFabError error)
     {
         HideLoading();
