@@ -12,8 +12,8 @@ public class InventorySlot : MonoBehaviour
     [SerializeField] private Item currentItem;
     [SerializeField] private int stackCount = 1;
 
-    // Visual settings
-    private readonly Color EMPTY_SLOT_COLOR = new Color(1f, 0.976f, 0.882f, 1f); // FFF9E1 in RGB
+        // Visual settings
+    private readonly Color EMPTY_SLOT_COLOR = new Color(1f, 0.976f, 0.882f, 0f); // FFF9E1 in RGB
 
     // Public properties
     public Item CurrentItem => currentItem;
