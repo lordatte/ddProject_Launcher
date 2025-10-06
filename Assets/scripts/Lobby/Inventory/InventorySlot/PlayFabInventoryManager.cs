@@ -8,10 +8,12 @@ public class PlayFabInventoryManager : MonoBehaviour
 {
     [Header("Inventory Settings")]
     [SerializeField] private bool loadInventoryOnStart = true;
+    [SerializeField] private bool autoSaveLayout = true;
 
     [Header("UI References")]
     [SerializeField] private Transform inventorySlotsParent;
     [SerializeField] private GameObject inventorySlotPrefab;
+    [SerializeField] private CanvasGroup inventoryCanvasGroup;
 
     [Header("Item Database")]
     [SerializeField] private List<Item> itemDatabase = new List<Item>();
@@ -19,19 +21,72 @@ public class PlayFabInventoryManager : MonoBehaviour
     private string inventoryCharacterId;
     private List<ItemInstance> characterInventory = new List<ItemInstance>();
     private bool isInventoryLoaded = false;
+    private bool isUIPopulated = false;
     private List<InventorySlot> inventorySlots = new List<InventorySlot>();
 
     // Dictionary for fast lookup by PlayFabId
     private Dictionary<string, Item> itemLookup = new Dictionary<string, Item>();
+
+    // Inventory Layout System
+    [System.Serializable]
+    public class InventorySlotData
+    {
+        public string itemId;
+        public int quantity;
+        public int slotIndex;
+    }
+
+    [System.Serializable]
+    public class InventoryLayoutData
+    {
+        public List<InventorySlotData> slotData = new List<InventorySlotData>();
+        public string characterId;
+        public string timestamp;
+        public string inventoryVersion; // To detect changes
+    }
+
+    private InventoryLayoutData currentLayout = new InventoryLayoutData();
+    private InventoryLayoutData pendingCloudSave = null;
+    private const string INVENTORY_LAYOUT_KEY = "InventoryLayout";
+    private bool needsCloudSave = false;
+    private bool isSavingToCloud = false;
+
+    // Prevent multiple rapid loads
+    private bool isLoading = false;
+    private float lastLoadTime = 0f;
+    private const float LOAD_COOLDOWN = 1f;
 
     void Start()
     {
         InitializeItemLookup();
         InitializeInventorySlots();
 
+        // Hide inventory until items are loaded
+        if (inventoryCanvasGroup != null)
+        {
+            inventoryCanvasGroup.alpha = 0f;
+            inventoryCanvasGroup.blocksRaycasts = false;
+        }
+
         if (loadInventoryOnStart)
         {
             LoadCharacterInventory();
+        }
+    }
+
+    private void OnApplicationPause(bool pauseStatus)
+    {
+        if (pauseStatus && isInventoryLoaded)
+        {
+            SaveInventoryLayoutToCloud(); // Save to PlayFab when app goes to background
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (isInventoryLoaded && needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud(); // Final save when object is destroyed
         }
     }
 
@@ -93,9 +148,357 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
+    #region Optimized Inventory Layout System
+    public void SaveInventoryLayoutLocal()
+    {
+        if (!isInventoryLoaded || string.IsNullOrEmpty(inventoryCharacterId) || !isUIPopulated)
+        {
+            Debug.LogWarning("Cannot save layout - inventory not fully loaded");
+            return;
+        }
+
+        currentLayout.slotData.Clear();
+        currentLayout.characterId = inventoryCharacterId;
+        currentLayout.timestamp = System.DateTime.UtcNow.ToString();
+        currentLayout.inventoryVersion = GetInventoryVersionHash();
+
+        for (int i = 0; i < inventorySlots.Count; i++)
+        {
+            InventorySlot slot = inventorySlots[i];
+            if (!slot.IsEmpty && slot.CurrentItem != null)
+            {
+                currentLayout.slotData.Add(new InventorySlotData
+                {
+                    itemId = slot.CurrentItem.PlayFabId,
+                    quantity = slot.StackCount,
+                    slotIndex = i
+                });
+            }
+        }
+
+        Debug.Log($"Saving inventory layout locally with {currentLayout.slotData.Count} items");
+
+        // Save locally immediately
+        string localKey = $"InventoryLayout_{inventoryCharacterId}";
+        PlayerPrefs.SetString(localKey, JsonUtility.ToJson(currentLayout));
+        PlayerPrefs.Save();
+
+        // Mark that we need to sync to cloud later
+        needsCloudSave = true;
+        pendingCloudSave = currentLayout;
+    }
+
+    public void SaveInventoryLayoutToCloud()
+    {
+        if (!needsCloudSave || isSavingToCloud || !PlayFabClientAPI.IsClientLoggedIn())
+        {
+            return;
+        }
+
+        if (pendingCloudSave == null)
+        {
+            pendingCloudSave = currentLayout;
+        }
+
+        isSavingToCloud = true;
+
+        var request = new UpdateUserDataRequest
+        {
+            Data = new Dictionary<string, string>
+            {
+                { INVENTORY_LAYOUT_KEY, JsonUtility.ToJson(pendingCloudSave) }
+            }
+        };
+
+        PlayFabClientAPI.UpdateUserData(request,
+            result =>
+            {
+                Debug.Log("Inventory layout saved successfully to PlayFab");
+                isSavingToCloud = false;
+                needsCloudSave = false;
+                pendingCloudSave = null;
+            },
+            error =>
+            {
+                Debug.LogError($"Failed to save inventory layout to PlayFab: {error.ErrorMessage}");
+                isSavingToCloud = false;
+                // We'll retry next time
+            }
+        );
+    }
+
+    public void LoadInventoryLayout()
+    {
+        if (string.IsNullOrEmpty(inventoryCharacterId))
+        {
+            Debug.LogWarning("Character ID not set, using default grouping");
+            ApplyDefaultGrouping();
+            return;
+        }
+
+        // Always try local first for immediate loading
+        string localKey = $"InventoryLayout_{inventoryCharacterId}";
+        string savedLayout = PlayerPrefs.GetString(localKey, "");
+
+        if (!string.IsNullOrEmpty(savedLayout))
+        {
+            var localLayout = JsonUtility.FromJson<InventoryLayoutData>(savedLayout);
+            if (localLayout.characterId == inventoryCharacterId)
+            {
+                Debug.Log("Loading saved inventory layout from local storage");
+                currentLayout = localLayout;
+                ApplySavedLayout();
+
+                // Then check cloud for updates in background
+                LoadInventoryLayoutFromCloud();
+                return;
+            }
+        }
+
+        Debug.Log("No local layout found, trying cloud");
+        LoadInventoryLayoutFromCloud();
+    }
+
+    private void LoadInventoryLayoutFromCloud()
+    {
+        if (!PlayFabClientAPI.IsClientLoggedIn())
+        {
+            Debug.LogWarning("Not logged into PlayFab, using default grouping");
+            ApplyDefaultGrouping();
+            return;
+        }
+
+        var request = new GetUserDataRequest
+        {
+            Keys = new List<string> { INVENTORY_LAYOUT_KEY }
+        };
+
+        PlayFabClientAPI.GetUserData(request, result =>
+        {
+            if (result.Data != null && result.Data.ContainsKey(INVENTORY_LAYOUT_KEY))
+            {
+                string layoutJson = result.Data[INVENTORY_LAYOUT_KEY].Value;
+                var cloudLayout = JsonUtility.FromJson<InventoryLayoutData>(layoutJson);
+
+                if (cloudLayout.characterId == inventoryCharacterId)
+                {
+                    // Only update if cloud version is newer
+                    if (IsCloudLayoutNewer(cloudLayout))
+                    {
+                        Debug.Log("Loading updated inventory layout from PlayFab");
+                        currentLayout = cloudLayout;
+                        ApplySavedLayout();
+
+                        // Update local storage with cloud data
+                        SaveInventoryLayoutLocal();
+                    }
+                    else
+                    {
+                        Debug.Log("Local layout is up to date, no need to update from cloud");
+                    }
+                    return;
+                }
+            }
+
+            Debug.Log("No valid cloud layout found, keeping current layout");
+
+        }, error =>
+        {
+            Debug.LogWarning("Failed to load layout from PlayFab, keeping current layout");
+            // We already have local layout, so this is not critical
+        });
+    }
+
+    private bool IsCloudLayoutNewer(InventoryLayoutData cloudLayout)
+    {
+        if (string.IsNullOrEmpty(currentLayout.timestamp) || string.IsNullOrEmpty(cloudLayout.timestamp))
+            return true;
+
+        if (currentLayout.inventoryVersion != cloudLayout.inventoryVersion)
+            return true;
+
+        System.DateTime currentTime = System.DateTime.Parse(currentLayout.timestamp);
+        System.DateTime cloudTime = System.DateTime.Parse(cloudLayout.timestamp);
+
+        return cloudTime > currentTime;
+    }
+
+    private string GetInventoryVersionHash()
+    {
+        // Create a simple hash based on item counts and positions
+        var sb = new System.Text.StringBuilder();
+        foreach (var slot in currentLayout.slotData.OrderBy(s => s.slotIndex))
+        {
+            sb.Append($"{slot.slotIndex}:{slot.itemId}:{slot.quantity};");
+        }
+        return sb.ToString().GetHashCode().ToString();
+    }
+
+    private void ApplySavedLayout()
+    {
+        ClearInventoryUI();
+
+        // Create a dictionary of available items from character inventory
+        Dictionary<string, int> availableItems = new Dictionary<string, int>();
+        foreach (var itemInstance in characterInventory)
+        {
+            string itemId = itemInstance.ItemId;
+            int quantity = itemInstance.RemainingUses ?? 1;
+
+            if (availableItems.ContainsKey(itemId))
+                availableItems[itemId] += quantity;
+            else
+                availableItems[itemId] = quantity;
+        }
+
+        foreach (var slotData in currentLayout.slotData)
+        {
+            if (slotData.slotIndex < inventorySlots.Count &&
+                availableItems.ContainsKey(slotData.itemId) &&
+                availableItems[slotData.itemId] >= slotData.quantity)
+            {
+                Item itemData = GetItemData(slotData.itemId);
+                if (itemData != null)
+                {
+                    if (inventorySlots[slotData.slotIndex].TryAddItem(itemData, slotData.quantity))
+                    {
+                        availableItems[slotData.itemId] -= slotData.quantity;
+                        if (availableItems[slotData.itemId] <= 0)
+                            availableItems.Remove(slotData.itemId);
+                    }
+                }
+            }
+        }
+
+        // Add any remaining items that weren't in the saved layout
+        if (availableItems.Count > 0)
+        {
+            AddRemainingItems(availableItems);
+        }
+
+        // Show inventory immediately after applying layout
+        ShowInventoryUI();
+        isUIPopulated = true;
+
+        Debug.Log("Applied saved inventory layout");
+    }
+
+    private void ApplyDefaultGrouping()
+    {
+        ClearInventoryUI();
+        PopulateInventoryUI();
+        Debug.Log("Applied default inventory grouping");
+    }
+
+    private void AddRemainingItems(Dictionary<string, int> remainingItems)
+    {
+        if (remainingItems.Count == 0) return;
+
+        int currentSlot = 0;
+        foreach (var itemEntry in remainingItems)
+        {
+            string itemId = itemEntry.Key;
+            int totalCount = itemEntry.Value;
+            Item itemData = GetItemData(itemId);
+
+            if (itemData == null) continue;
+
+            if (itemData.IsStackable)
+            {
+                while (totalCount > 0 && currentSlot < inventorySlots.Count)
+                {
+                    if (inventorySlots[currentSlot].IsEmpty)
+                    {
+                        int stackAmount = Mathf.Min(totalCount, itemData.MaxStackSize);
+                        if (inventorySlots[currentSlot].TryAddItem(itemData, stackAmount))
+                        {
+                            totalCount -= stackAmount;
+                        }
+                    }
+                    currentSlot++;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < totalCount && currentSlot < inventorySlots.Count; i++)
+                {
+                    while (currentSlot < inventorySlots.Count && !inventorySlots[currentSlot].IsEmpty)
+                    {
+                        currentSlot++;
+                    }
+
+                    if (currentSlot < inventorySlots.Count)
+                    {
+                        inventorySlots[currentSlot].TryAddItem(itemData, 1);
+                        currentSlot++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Call this when items are moved in inventory
+    public void OnInventoryItemMoved()
+    {
+        SaveInventoryLayoutLocal(); // Save locally immediately
+
+        if (autoSaveLayout)
+        {
+            // Schedule cloud save for later
+            CancelInvoke("DelayedCloudSave");
+            Invoke("DelayedCloudSave", 2f); // Wait 2 seconds before cloud save
+        }
+    }
+
+    // For backward compatibility with drag and drop system
+    public void OnInventoryStateChanged()
+    {
+        OnInventoryItemMoved();
+    }
+
+    private void DelayedCloudSave()
+    {
+        if (needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud();
+        }
+    }
+
+    private void ShowInventoryUI()
+    {
+        if (inventoryCanvasGroup != null)
+        {
+            inventoryCanvasGroup.alpha = 1f;
+            inventoryCanvasGroup.blocksRaycasts = true;
+        }
+    }
+
+    public void HideInventoryUI()
+    {
+        if (inventoryCanvasGroup != null)
+        {
+            inventoryCanvasGroup.alpha = 0f;
+            inventoryCanvasGroup.blocksRaycasts = false;
+        }
+
+        // Save to cloud when inventory is closed
+        if (needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud();
+        }
+    }
+    #endregion
+
     #region Public Methods
     public void LoadCharacterInventory()
     {
+        // Prevent multiple rapid loads
+        if (isLoading || (Time.time - lastLoadTime < LOAD_COOLDOWN && isInventoryLoaded))
+        {
+            Debug.Log("Inventory load skipped - too soon since last load");
+            return;
+        }
+
         if (!PlayFabClientAPI.IsClientLoggedIn())
         {
             Debug.LogWarning("PlayFab client is not logged in. Cannot load inventory.");
@@ -107,6 +510,12 @@ public class PlayFabInventoryManager : MonoBehaviour
             Debug.LogWarning("CharacterManager not available or character ID not set. Cannot load character inventory.");
             return;
         }
+
+        isLoading = true;
+        lastLoadTime = Time.time;
+
+        // Hide UI while loading
+        HideInventoryUI();
 
         inventoryCharacterId = CharacterManager.Instance.CharacterId;
 
@@ -126,7 +535,7 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
 
         ClearInventoryUI();
-        PopulateInventoryUI();
+        LoadInventoryLayout();
     }
 
     public void ClearInventoryUI()
@@ -138,6 +547,7 @@ public class PlayFabInventoryManager : MonoBehaviour
                 slot.RemoveItem();
             }
         }
+        isUIPopulated = false;
     }
 
     private void PopulateInventoryUI()
@@ -148,7 +558,7 @@ public class PlayFabInventoryManager : MonoBehaviour
             .Select(group => new
             {
                 ItemId = group.Key,
-                TotalCount = group.Sum(item => item.RemainingUses ?? 1), // Use RemainingUses for stack count
+                TotalCount = group.Sum(item => item.RemainingUses ?? 1),
                 ItemInstances = group.ToList()
             })
             .ToList();
@@ -176,7 +586,6 @@ public class PlayFabInventoryManager : MonoBehaviour
 
             if (itemData.IsStackable)
             {
-                // For stackable items, distribute across slots if needed
                 int remainingCount = itemGroup.TotalCount;
 
                 while (remainingCount > 0 && currentSlot < inventorySlots.Count)
@@ -193,7 +602,7 @@ public class PlayFabInventoryManager : MonoBehaviour
                     else
                     {
                         Debug.LogWarning($"Failed to add item to slot {currentSlot}");
-                        currentSlot++; // Move to next slot even if failed
+                        currentSlot++;
                     }
 
                     if (remainingCount <= 0) break;
@@ -201,7 +610,6 @@ public class PlayFabInventoryManager : MonoBehaviour
             }
             else
             {
-                // For non-stackable items, put each instance in separate slots
                 foreach (var itemInstance in itemGroup.ItemInstances)
                 {
                     if (currentSlot >= inventorySlots.Count) break;
@@ -217,17 +625,17 @@ public class PlayFabInventoryManager : MonoBehaviour
                     else
                     {
                         Debug.LogWarning($"Failed to add non-stackable item to slot {currentSlot}");
-                        currentSlot++; // Move to next slot even if failed
+                        currentSlot++;
                     }
                 }
             }
         }
 
-        Debug.Log($"Successfully populated {currentSlot} slots with inventory items");
+        // Show inventory immediately after populating
+        ShowInventoryUI();
+        isUIPopulated = true;
 
-        // Log remaining empty slots
-        int emptySlots = inventorySlots.Count - currentSlot;
-        Debug.Log($"{emptySlots} empty slots remaining");
+        Debug.Log($"Successfully populated {currentSlot} slots with inventory items");
     }
 
     private Item GetItemData(string playFabItemId)
@@ -241,7 +649,6 @@ public class PlayFabInventoryManager : MonoBehaviour
         return null;
     }
 
-    // Method to add items to the database at runtime
     public void AddItemToDatabase(Item item)
     {
         if (item != null && !string.IsNullOrEmpty(item.PlayFabId))
@@ -258,7 +665,6 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
-    // Method to remove items from the database at runtime
     public void RemoveItemFromDatabase(Item item)
     {
         if (item != null)
@@ -268,7 +674,6 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
-    // Method to clear and rebuild the lookup (call this if you modify the itemDatabase list in inspector)
     public void RebuildItemLookup()
     {
         InitializeItemLookup();
@@ -282,6 +687,11 @@ public class PlayFabInventoryManager : MonoBehaviour
     public bool IsInventoryLoaded()
     {
         return isInventoryLoaded;
+    }
+
+    public bool IsUIPopulated()
+    {
+        return isUIPopulated;
     }
 
     public void PrintInventoryToConsole()
@@ -334,25 +744,22 @@ public class PlayFabInventoryManager : MonoBehaviour
     {
         characterInventory = result.Inventory ?? new List<ItemInstance>();
         isInventoryLoaded = true;
+        isLoading = false;
 
         Debug.Log($"Successfully loaded {characterInventory.Count} items from character inventory.");
 
-        // Log detailed information about each item
-        foreach (var item in characterInventory)
-        {
-            Debug.Log($"Item: {item.ItemId}, DisplayName: {item.DisplayName}, RemainingUses: {item.RemainingUses}");
-        }
-
-        PrintInventoryToConsole();
-
-        // Auto-refresh UI when inventory is loaded
-        RefreshInventoryUI();
+        // Load the saved layout instead of auto-grouping
+        LoadInventoryLayout();
     }
 
     private void OnGetInventoryFailure(PlayFabError error)
     {
         Debug.LogError($"Failed to load character inventory: {error.ErrorMessage}");
         isInventoryLoaded = false;
+        isLoading = false;
+
+        // Still show empty inventory on failure
+        ShowInventoryUI();
     }
     #endregion
 
@@ -372,7 +779,6 @@ public class PlayFabInventoryManager : MonoBehaviour
         return characterInventory.Count(item => item.ItemId == playFabItemId);
     }
 
-    // Get total count including stack sizes
     public int GetTotalItemCount(string playFabItemId)
     {
         return characterInventory
@@ -381,14 +787,30 @@ public class PlayFabInventoryManager : MonoBehaviour
     }
     #endregion
 
-    // For testing purposes - you can call this from a button or other input
+    // For testing purposes
     [ContextMenu("Reload Inventory")]
-    private void ReloadInventory()
+    public void ReloadInventory()
     {
         LoadCharacterInventory();
     }
 
-    // Editor method to help with debugging
+    [ContextMenu("Save Layout Now")]
+    public void ForceSaveLayout()
+    {
+        SaveInventoryLayoutLocal();
+        SaveInventoryLayoutToCloud();
+    }
+
+    [ContextMenu("Clear Saved Layout")]
+    public void ClearSavedLayout()
+    {
+        currentLayout = new InventoryLayoutData();
+        string localKey = $"InventoryLayout_{inventoryCharacterId}";
+        PlayerPrefs.DeleteKey(localKey);
+        needsCloudSave = false;
+        Debug.Log("Cleared saved layout");
+    }
+
     [ContextMenu("Print Item Database")]
     private void PrintItemDatabase()
     {
@@ -401,5 +823,42 @@ public class PlayFabInventoryManager : MonoBehaviour
             }
         }
         Debug.Log("=====================");
+    }
+
+    // Public method to show/hide inventory with proper state management
+    public void ToggleInventory()
+    {
+        if (!isInventoryLoaded)
+        {
+            LoadCharacterInventory();
+        }
+        else if (isUIPopulated)
+        {
+            if (inventoryCanvasGroup != null && inventoryCanvasGroup.alpha > 0)
+            {
+                HideInventoryUI();
+            }
+            else
+            {
+                ShowInventoryUI();
+            }
+        }
+    }
+
+    public void ShowInventory()
+    {
+        if (!isInventoryLoaded)
+        {
+            LoadCharacterInventory();
+        }
+        else if (isUIPopulated)
+        {
+            ShowInventoryUI();
+        }
+    }
+
+    public void HideInventory()
+    {
+        HideInventoryUI();
     }
 }

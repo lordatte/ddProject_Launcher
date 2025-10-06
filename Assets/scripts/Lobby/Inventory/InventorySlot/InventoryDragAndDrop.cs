@@ -397,11 +397,16 @@ public class InventoryDragAndDrop : MonoBehaviour, IPointerClickHandler, IDropHa
         isDragging = false;
         currentlyDraggedItem = null;
 
-        // Restore original slot appearance
         canvasGroup.alpha = 1f;
         canvasGroup.blocksRaycasts = true;
-
         CleanupDragVisual();
+
+        // Notify inventory manager to save layout
+        PlayFabInventoryManager inventoryManager = FindObjectOfType<PlayFabInventoryManager>();
+        if (inventoryManager != null)
+        {
+            inventoryManager.OnInventoryStateChanged();
+        }
     }
 
     private void CleanupDragVisual()
