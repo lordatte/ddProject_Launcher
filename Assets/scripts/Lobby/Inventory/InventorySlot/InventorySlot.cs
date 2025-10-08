@@ -9,10 +9,10 @@ public class InventorySlot : MonoBehaviour
     [SerializeField] private TextMeshProUGUI stackCountText;
 
     [Header("Slot Data")]
-    [SerializeField] private Item currentItem;
+    [SerializeField] protected Item currentItem;
     [SerializeField] private int stackCount = 1;
 
-        // Visual settings
+    // Visual settings
     private readonly Color EMPTY_SLOT_COLOR = new Color(1f, 0.976f, 0.882f, 0f); // FFF9E1 in RGB
 
     // Public properties
@@ -29,7 +29,7 @@ public class InventorySlot : MonoBehaviour
     }
 
     #region Public API
-    public bool TryAddItem(Item item, int count = 1)
+    public virtual bool TryAddItem(Item item, int count = 1)
     {
         if (item == null) return false;
 
@@ -42,7 +42,7 @@ public class InventorySlot : MonoBehaviour
         return false;
     }
 
-    public void RemoveItem()
+    public virtual void RemoveItem()
     {
         currentItem = null;
         stackCount = 0;
@@ -86,7 +86,7 @@ public class InventorySlot : MonoBehaviour
             DecreaseStack(1);
     }
 
-    public bool CanAcceptItem(Item item, int count = 1)
+    public virtual bool CanAcceptItem(Item item, int count = 1)
     {
         if (IsEmpty) return true;
         return CanStackWith(item) && (stackCount + count <= currentItem.MaxStackSize);

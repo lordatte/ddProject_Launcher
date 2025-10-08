@@ -244,7 +244,13 @@ public class InventoryDragAndDrop : MonoBehaviour, IPointerClickHandler, IDropHa
             return;
         }
 
-        if (isSplitting)
+        // Check if target slot is an equipment slot
+        EquipmentSlot equipmentSlot = targetSlot as EquipmentSlot;
+        if (equipmentSlot != null)
+        {
+            HandleEquipmentDrop(equipmentSlot);
+        }
+        else if (isSplitting)
         {
             HandleSplitDrop(targetSlot);
         }
@@ -418,7 +424,43 @@ public class InventoryDragAndDrop : MonoBehaviour, IPointerClickHandler, IDropHa
         dragImage = null;
         dragTransform = null;
     }
+    // Add this method to your InventoryDragAndDrop.cs
+    private void HandleEquipmentDrop(EquipmentSlot equipmentSlot)
+    {
+        if (!isDragging || equipmentSlot == null)
+        {
+            CancelDrag();
+            return;
+        }
 
+        // Check if the equipment slot can accept this item
+        if (equipmentSlot.CanAcceptItem(originalSlot.CurrentItem, originalSlot.StackCount))
+        {
+            // Store original item data
+            Item draggedItem = originalSlot.CurrentItem;
+            int draggedCount = originalSlot.StackCount;
+
+            // Remove from original slot
+            originalSlot.RemoveItem();
+
+            // Add to equipment slot (this will automatically call Equip)
+            if (equipmentSlot.TryAddItem(draggedItem, draggedCount))
+            {
+                EndDrag();
+            }
+            else
+            {
+                // If equipment slot rejected the item, return it to original slot
+                originalSlot.TryAddItem(draggedItem, draggedCount);
+                CancelDrag();
+            }
+        }
+        else
+        {
+            Debug.Log($"Equipment slot cannot accept this item type. Required: {equipmentSlot.GetAcceptedItemClass()}");
+            CancelDrag();
+        }
+    }
     private void OnDestroy()
     {
         if (currentlyDraggedItem == this)
