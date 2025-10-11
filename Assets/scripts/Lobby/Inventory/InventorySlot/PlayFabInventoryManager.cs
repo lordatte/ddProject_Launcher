@@ -42,12 +42,14 @@ public class PlayFabInventoryManager : MonoBehaviour
         public List<InventorySlotData> slotData = new List<InventorySlotData>();
         public string characterId;
         public string timestamp;
+        public string inventoryVersion; // To detect changes
     }
 
     private InventoryLayoutData currentLayout = new InventoryLayoutData();
+    private InventoryLayoutData pendingCloudSave = null;
     private const string INVENTORY_LAYOUT_KEY = "InventoryLayout";
-    private float lastSaveTime;
-    private const float SAVE_INTERVAL = 10f;
+    private bool needsCloudSave = false;
+    private bool isSavingToCloud = false;
 
     // Prevent multiple rapid loads
     private bool isLoading = false;
@@ -58,7 +60,7 @@ public class PlayFabInventoryManager : MonoBehaviour
     {
         InitializeItemLookup();
         InitializeInventorySlots();
-        
+
         // Hide inventory until items are loaded
         if (inventoryCanvasGroup != null)
         {
@@ -72,13 +74,19 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
-    private void Update()
+    private void OnApplicationPause(bool pauseStatus)
     {
-        // Periodic auto-save if enabled
-        if (autoSaveLayout && isInventoryLoaded && Time.time - lastSaveTime > SAVE_INTERVAL)
+        if (pauseStatus && isInventoryLoaded)
         {
-            SaveInventoryLayout();
-            lastSaveTime = Time.time;
+            SaveInventoryLayoutToCloud(); // Save to PlayFab when app goes to background
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (isInventoryLoaded && needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud(); // Final save when object is destroyed
         }
     }
 
@@ -140,8 +148,8 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
-    #region Inventory Layout System
-    public void SaveInventoryLayout()
+    #region Optimized Inventory Layout System
+    public void SaveInventoryLayoutLocal()
     {
         if (!isInventoryLoaded || string.IsNullOrEmpty(inventoryCharacterId) || !isUIPopulated)
         {
@@ -152,6 +160,7 @@ public class PlayFabInventoryManager : MonoBehaviour
         currentLayout.slotData.Clear();
         currentLayout.characterId = inventoryCharacterId;
         currentLayout.timestamp = System.DateTime.UtcNow.ToString();
+        currentLayout.inventoryVersion = GetInventoryVersionHash();
 
         for (int i = 0; i < inventorySlots.Count; i++)
         {
@@ -167,24 +176,55 @@ public class PlayFabInventoryManager : MonoBehaviour
             }
         }
 
-        Debug.Log($"Saving inventory layout with {currentLayout.slotData.Count} items");
+        Debug.Log($"Saving inventory layout locally with {currentLayout.slotData.Count} items");
 
-        // Save to PlayFab player data
+        // Save locally immediately
+        string localKey = $"InventoryLayout_{inventoryCharacterId}";
+        PlayerPrefs.SetString(localKey, JsonUtility.ToJson(currentLayout));
+        PlayerPrefs.Save();
+
+        // Mark that we need to sync to cloud later
+        needsCloudSave = true;
+        pendingCloudSave = currentLayout;
+    }
+
+    public void SaveInventoryLayoutToCloud()
+    {
+        if (!needsCloudSave || isSavingToCloud || !PlayFabClientAPI.IsClientLoggedIn())
+        {
+            return;
+        }
+
+        if (pendingCloudSave == null)
+        {
+            pendingCloudSave = currentLayout;
+        }
+
+        isSavingToCloud = true;
+
         var request = new UpdateUserDataRequest
         {
             Data = new Dictionary<string, string>
             {
-                { INVENTORY_LAYOUT_KEY, JsonUtility.ToJson(currentLayout) }
+                { INVENTORY_LAYOUT_KEY, JsonUtility.ToJson(pendingCloudSave) }
             }
         };
 
         PlayFabClientAPI.UpdateUserData(request,
-            result => Debug.Log("Inventory layout saved successfully to PlayFab"),
-            error => Debug.LogError($"Failed to save inventory layout: {error.ErrorMessage}")
+            result =>
+            {
+                Debug.Log("Inventory layout saved successfully to PlayFab");
+                isSavingToCloud = false;
+                needsCloudSave = false;
+                pendingCloudSave = null;
+            },
+            error =>
+            {
+                Debug.LogError($"Failed to save inventory layout to PlayFab: {error.ErrorMessage}");
+                isSavingToCloud = false;
+                // We'll retry next time
+            }
         );
-
-        // Also save locally as backup
-        SaveInventoryLayoutLocal();
     }
 
     public void LoadInventoryLayout()
@@ -192,6 +232,38 @@ public class PlayFabInventoryManager : MonoBehaviour
         if (string.IsNullOrEmpty(inventoryCharacterId))
         {
             Debug.LogWarning("Character ID not set, using default grouping");
+            ApplyDefaultGrouping();
+            return;
+        }
+
+        // Always try local first for immediate loading
+        string localKey = $"InventoryLayout_{inventoryCharacterId}";
+        string savedLayout = PlayerPrefs.GetString(localKey, "");
+
+        if (!string.IsNullOrEmpty(savedLayout))
+        {
+            var localLayout = JsonUtility.FromJson<InventoryLayoutData>(savedLayout);
+            if (localLayout.characterId == inventoryCharacterId)
+            {
+                Debug.Log("Loading saved inventory layout from local storage");
+                currentLayout = localLayout;
+                ApplySavedLayout();
+
+                // Then check cloud for updates in background
+                LoadInventoryLayoutFromCloud();
+                return;
+            }
+        }
+
+        Debug.Log("No local layout found, trying cloud");
+        LoadInventoryLayoutFromCloud();
+    }
+
+    private void LoadInventoryLayoutFromCloud()
+    {
+        if (!PlayFabClientAPI.IsClientLoggedIn())
+        {
+            Debug.LogWarning("Not logged into PlayFab, using default grouping");
             ApplyDefaultGrouping();
             return;
         }
@@ -206,32 +278,60 @@ public class PlayFabInventoryManager : MonoBehaviour
             if (result.Data != null && result.Data.ContainsKey(INVENTORY_LAYOUT_KEY))
             {
                 string layoutJson = result.Data[INVENTORY_LAYOUT_KEY].Value;
-                currentLayout = JsonUtility.FromJson<InventoryLayoutData>(layoutJson);
+                var cloudLayout = JsonUtility.FromJson<InventoryLayoutData>(layoutJson);
 
-                if (currentLayout.characterId == inventoryCharacterId)
+                if (cloudLayout.characterId == inventoryCharacterId)
                 {
-                    Debug.Log("Loading saved inventory layout from PlayFab");
-                    ApplySavedLayout();
+                    // Only update if cloud version is newer
+                    if (IsCloudLayoutNewer(cloudLayout))
+                    {
+                        Debug.Log("Loading updated inventory layout from PlayFab");
+                        currentLayout = cloudLayout;
+                        ApplySavedLayout();
+
+                        // Update local storage with cloud data
+                        SaveInventoryLayoutLocal();
+                    }
+                    else
+                    {
+                        Debug.Log("Local layout is up to date, no need to update from cloud");
+                    }
                     return;
                 }
-                else
-                {
-                    Debug.Log("Character ID mismatch, using default grouping");
-                }
-            }
-            else
-            {
-                Debug.Log("No saved layout found in PlayFab, checking local storage");
             }
 
-            // If no saved layout in PlayFab, try local storage
-            LoadInventoryLayoutLocal();
+            Debug.Log("No valid cloud layout found, keeping current layout");
 
         }, error =>
         {
-            Debug.LogWarning("Failed to load layout from PlayFab, trying local storage");
-            LoadInventoryLayoutLocal();
+            Debug.LogWarning("Failed to load layout from PlayFab, keeping current layout");
+            // We already have local layout, so this is not critical
         });
+    }
+
+    private bool IsCloudLayoutNewer(InventoryLayoutData cloudLayout)
+    {
+        if (string.IsNullOrEmpty(currentLayout.timestamp) || string.IsNullOrEmpty(cloudLayout.timestamp))
+            return true;
+
+        if (currentLayout.inventoryVersion != cloudLayout.inventoryVersion)
+            return true;
+
+        System.DateTime currentTime = System.DateTime.Parse(currentLayout.timestamp);
+        System.DateTime cloudTime = System.DateTime.Parse(cloudLayout.timestamp);
+
+        return cloudTime > currentTime;
+    }
+
+    private string GetInventoryVersionHash()
+    {
+        // Create a simple hash based on item counts and positions
+        var sb = new System.Text.StringBuilder();
+        foreach (var slot in currentLayout.slotData.OrderBy(s => s.slotIndex))
+        {
+            sb.Append($"{slot.slotIndex}:{slot.itemId}:{slot.quantity};");
+        }
+        return sb.ToString().GetHashCode().ToString();
     }
 
     private void ApplySavedLayout()
@@ -251,8 +351,6 @@ public class PlayFabInventoryManager : MonoBehaviour
                 availableItems[itemId] = quantity;
         }
 
-        // Apply the saved layout
-        bool layoutAppliedSuccessfully = false;
         foreach (var slotData in currentLayout.slotData)
         {
             if (slotData.slotIndex < inventorySlots.Count &&
@@ -267,7 +365,6 @@ public class PlayFabInventoryManager : MonoBehaviour
                         availableItems[slotData.itemId] -= slotData.quantity;
                         if (availableItems[slotData.itemId] <= 0)
                             availableItems.Remove(slotData.itemId);
-                        layoutAppliedSuccessfully = true;
                     }
                 }
             }
@@ -340,49 +437,31 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
     }
 
-    // Local storage as backup
-    private void SaveInventoryLayoutLocal()
+    // Call this when items are moved in inventory
+    public void OnInventoryItemMoved()
     {
-        string localKey = $"InventoryLayout_{inventoryCharacterId}";
-        PlayerPrefs.SetString(localKey, JsonUtility.ToJson(currentLayout));
-        PlayerPrefs.Save();
-        Debug.Log("Inventory layout saved locally");
-    }
+        SaveInventoryLayoutLocal(); // Save locally immediately
 
-    private void LoadInventoryLayoutLocal()
-    {
-        string localKey = $"InventoryLayout_{inventoryCharacterId}";
-        string savedLayout = PlayerPrefs.GetString(localKey, "");
-
-        if (!string.IsNullOrEmpty(savedLayout))
+        if (autoSaveLayout)
         {
-            currentLayout = JsonUtility.FromJson<InventoryLayoutData>(savedLayout);
-            if (currentLayout.characterId == inventoryCharacterId)
-            {
-                Debug.Log("Loading saved inventory layout from local storage");
-                ApplySavedLayout();
-                return;
-            }
+            // Schedule cloud save for later
+            CancelInvoke("DelayedCloudSave");
+            Invoke("DelayedCloudSave", 2f); // Wait 2 seconds before cloud save
         }
-
-        Debug.Log("No saved layout found, using default grouping");
-        ApplyDefaultGrouping();
     }
 
-    // Call this when inventory is closed or when drag/drop operations complete
+    // For backward compatibility with drag and drop system
     public void OnInventoryStateChanged()
     {
-        if (autoSaveLayout && isUIPopulated)
-        {
-            // Debounced save - wait a frame to avoid multiple rapid saves
-            CancelInvoke("DebouncedSave");
-            Invoke("DebouncedSave", 0.1f);
-        }
+        OnInventoryItemMoved();
     }
 
-    private void DebouncedSave()
+    private void DelayedCloudSave()
     {
-        SaveInventoryLayout();
+        if (needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud();
+        }
     }
 
     private void ShowInventoryUI()
@@ -400,6 +479,12 @@ public class PlayFabInventoryManager : MonoBehaviour
         {
             inventoryCanvasGroup.alpha = 0f;
             inventoryCanvasGroup.blocksRaycasts = false;
+        }
+
+        // Save to cloud when inventory is closed
+        if (needsCloudSave)
+        {
+            SaveInventoryLayoutToCloud();
         }
     }
     #endregion
@@ -450,7 +535,7 @@ public class PlayFabInventoryManager : MonoBehaviour
         }
 
         ClearInventoryUI();
-        LoadInventoryLayout(); // Use layout system instead of direct population
+        LoadInventoryLayout();
     }
 
     public void ClearInventoryUI()
@@ -672,7 +757,7 @@ public class PlayFabInventoryManager : MonoBehaviour
         Debug.LogError($"Failed to load character inventory: {error.ErrorMessage}");
         isInventoryLoaded = false;
         isLoading = false;
-        
+
         // Still show empty inventory on failure
         ShowInventoryUI();
     }
@@ -712,7 +797,8 @@ public class PlayFabInventoryManager : MonoBehaviour
     [ContextMenu("Save Layout Now")]
     public void ForceSaveLayout()
     {
-        SaveInventoryLayout();
+        SaveInventoryLayoutLocal();
+        SaveInventoryLayoutToCloud();
     }
 
     [ContextMenu("Clear Saved Layout")]
@@ -721,6 +807,7 @@ public class PlayFabInventoryManager : MonoBehaviour
         currentLayout = new InventoryLayoutData();
         string localKey = $"InventoryLayout_{inventoryCharacterId}";
         PlayerPrefs.DeleteKey(localKey);
+        needsCloudSave = false;
         Debug.Log("Cleared saved layout");
     }
 
@@ -773,6 +860,5 @@ public class PlayFabInventoryManager : MonoBehaviour
     public void HideInventory()
     {
         HideInventoryUI();
-        OnInventoryStateChanged(); // Save when hiding
     }
 }
